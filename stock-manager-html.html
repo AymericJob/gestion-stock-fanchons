@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestion Stock ASBL</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; }
+        .tab-active { background-color: #4f46e5; color: white; }
+        .tab-inactive { background-color: #e5e7eb; color: #374151; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen p-4">
+    <div id="app" class="max-w-7xl mx-auto"></div>
+
+    <script>
+        // État de l'application
+        let state = {
+            events: [
+                {
+                    id: 1,
+                    name: 'Marche ADEPS Fanchons 2025',
+                    date: '2025-03-15',
+                    items: [
+                        {
+                            id: 1,
+                            article: 'Jupiler',
+                            format: '25 cl',
+                            fournisseur: 'Colruyt',
+                            responsable: 'Nathan Luc',
+                            stockSalle: 0,
+                            qteAchetee: 360,
+                            prixAchat: 0.38,
+                            qteRemise: 72,
+                            qteConsomme: 288,
+                            prixVente: 0.38,
+                            payePar: 'Caisse Fanchons',
+                            categorie: 'Boissons'
+                        },
+                        {
+                            id: 2,
+                            article: 'Coca-cola Zero',
+                            format: '1,5 litre',
+                            fournisseur: 'Colruyt',
+                            responsable: 'Nathan Luc',
+                            stockSalle: 0,
+                            qteAchetee: 16,
+                            prixAchat: 2.08,
+                            qteRemise: 6,
+                            qteConsomme: 10,
+                            prixVente: 2.08,
+                            payePar: 'Caisse Fanchons',
+                            categorie: 'Boissons'
+                        },
+                        {
+                            id: 3,
+                            article: 'Saucisses',
+                            format: '',
+                            fournisseur: 'Courses',
+                            responsable: 'Julien',
+                            stockSalle: 0,
+                            qteAchetee: 120,
+                            prixAchat: 1.35,
+                            qteRemise: 0,
+                            qteConsomme: 120,
+                            prixVente: 1.35,
+                            payePar: 'Caisse Fanchons',
+                            categorie: 'Nourriture'
+                        }
+                    ]
+                }
+            ],
+            activeEvent: 0
+        };
+
+        const categories = ['Boissons', 'Nourriture', 'Autre'];
+
+        // Fonctions de calcul
+        function calculateItemStats(item) {
+            const totalAchat = item.qteAchetee * item.prixAchat;
+            const totalVente = item.qteConsomme * item.prixVente;
+            const marge = totalVente - totalAchat;
+            const stockRestant = item.qteAchetee - item.qteConsomme - item.qteRemise;
+            const tauxVente = item.qteAchetee > 0 ? ((item.qteConsomme / item.qteAchetee) * 100).toFixed(1) : 0;
+            
+            return { totalAchat, totalVente, marge, stockRestant, tauxVente };
+        }
+
+        function calculateEventTotals() {
+            const currentEvent = state.events[state.activeEvent];
+            let totalAchat = 0;
+            let totalVente = 0;
+            
+            currentEvent.items.forEach(item => {
+                const stats = calculateItemStats(item);
+                totalAchat += stats.totalAchat;
+                totalVente += stats.totalVente;
+            });
+            
+            return {
+                totalAchat: totalAchat.toFixed(2),
+                totalVente: totalVente.toFixed(2),
+                marge: (totalVente - totalAchat).toFixed(2),
+                margePercent: totalAchat > 0 ? (((totalVente - totalAchat) / totalAchat) * 100).toFixed(1) : 0
+            };
+        }
+
+        function getStockByCategory() {
+            const currentEvent = state.events[state.activeEvent];
+            const stockByCategory = {};
+            categories.forEach(cat => {
+                stockByCategory[cat] = currentEvent.items
+                    .filter(item => item.categorie === cat)
+                    .map(item => ({
+                        ...item,
+                        ...calculateItemStats(item)
+                    }));
+            });
+            return stockByCategory;
+        }
+
+        // Actions
+        function addEvent() {
+            const newEvent = {
+                id: Date.now(),
+                name: `Nouvel Événement ${state.events.length + 1}`,
+                date: new Date().toISOString().split('T')[0],
+                items: []
+            };
+            state.events.push(newEvent);
+            state.activeEvent = state.events.length - 1;
+            render();
+        }
+
+        function setActiveEvent(index) {
+            state.activeEvent = index;
+            render();
+        }
+
+        function addItem(formData) {
+            const currentEvent = state.events[state.activeEvent];
+            currentEvent.items.push({
+                id: Date.now(),
+                ...formData
+            });
+            render();
+        }
+
+        function deleteItem(itemId) {
+            const currentEvent = state.events[state.activeEvent];
+            currentEvent.items = currentEvent.items.filter(item => item.id !== itemId);
+            render();
+        }
+
+        function updateItem(itemId, field, value) {
+            const currentEvent = state.events[state.activeEvent];
+            const item = currentEvent.items.find(i => i.id === itemId);
+            if (item) {
+                if (field.includes('qte') || field.includes('prix') || field === 'stockSalle') {
+                    item[field] = parseFloat(value) || 0;
+                } else {
+                    item[field] = value;
+                }
+                render();
+            }
+        }
+
+        function exportToCSV() {
+            const currentEvent = state.events[state.activeEvent];
+            let csv = 'Article,Format,Fournisseur,Responsable,Stock Salle,Qté Achetée,Prix Achat,Total Achat,Qté Remise,Qté Consommée,Prix Vente,Total Vente,Marge,Stock Restant,Payé Par,Catégorie\n';
+            
+            currentEvent.items.forEach(item => {
+                const stats = calculateItemStats(item);
+                csv += `"${item.article}","${item.format}","${item.fournisseur}","${item.responsable}",${item.stockSalle},${item.qteAchetee},${item.prixAchat},${stats.totalAchat.toFixed(2)},${item.qteRemise},${item.qteConsomme},${item.prixVente},${stats.totalVente.toFixed(2)},${stats.marge.toFixed(2)},${stats.stockRestant},"${item.payePar}","${item.categorie}"\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${currentEvent.name.replace(/\s+/g, '_')}.csv`;
+            a.click();
+        }
+
+        // Rendu de l'interface
+        function render() {
+            const currentEvent = state.events[state.activeEvent];
+            const totals = calculateEventTotals();
+            const stockByCategory = getStockByCategory();
+
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <!-- Header -->
+                <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                    <div class="flex items-center justify-between mb-4 flex-wrap gap-4">
+                        <div class="flex items-center gap-3">
+                            <svg class="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                            </svg>
+                            <h1 class="text-3xl font-bold text-gray-800">Gestion de Stock ASBL</h1>
+                        </div>
+                        <button onclick="addEvent()" class="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                            Nouvel Événement
+                        </button>
+                    </div>
+
+                    <!-- Event Tabs -->
+                    <div class="flex gap-2 overflow-x-auto pb-2">
+                        ${state.events.map((event, index) => `
+                            <button onclick="setActiveEvent(${index})" class="px-4 py-2 rounded-lg whitespace-nowrap transition ${state.activeEvent === index ? 'tab-active' : 'tab-inactive'}">
+                                ${event.name}
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- Stats Dashboard -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-500 text-sm">Total Achats</p>
+                                <p class="text-2xl font-bold text-red-600">${totals.totalAchat}€</p>
+                            </div>
+                            <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-500 text-sm">Total Ventes</p>
+                                <p class="text-2xl font-bold text-green-600">${totals.totalVente}€</p>
+                            </div>
+                            <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                            </svg>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-500 text-sm">Marge</p>
+                                <p class="text-2xl font-bold text-indigo-600">${totals.marge}€</p>
+                            </div>
+                            <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-500 text-sm">Rentabilité</p>
+                                <p class="text-2xl font-bold text-purple-600">${totals.margePercent}%</p>
+                            </div>
+                            <svg class="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stock Restant Section -->
+                <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                    <div class="flex items-center gap-3 mb-6">
+                        <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                        </svg>
+                        <h2 class="text-xl font-bold text-gray-800">Stock Restant par Catégorie</h2>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        ${categories.map(categorie => {
+                            const items = stockByCategory[categorie] || [];
+                            const totalStockRestant = items.reduce((sum, item) => sum + item.stockRestant, 0);
+                            
+                            return `
+                                <div class="border rounded-lg p-4">
+                                    <h3 class="font-bold text-lg mb-3 text-gray-700 border-b pb-2">${categorie}</h3>
+                                    ${items.length === 0 ? 
+                                        '<p class="text-gray-400 text-sm italic">Aucun article</p>' :
+                                        `<div class="space-y-3">
+                                            ${items.map(item => `
+                                                <div class="flex items-start justify-between gap-2 p-2 bg-gray-50 rounded">
+                                                    <div class="flex-1 min-w-0">
+                                                        <p class="font-semibold text-sm text-gray-800 truncate">${item.article}</p>
+                                                        <p class="text-xs text-gray-500">${item.format}</p>
+                                                        <div class="flex items-center gap-2 mt-1 text-xs text-gray-600">
+                                                            <span>Acheté: ${item.qteAchetee}</span>
+                                                            <span>•</span>
+                                                            <span>Vendu: ${item.qteConsomme}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="flex items-center gap-2">
+                                                        ${item.stockRestant > 0 ? 
+                                                            '<svg class="w-4 h-4 text-orange-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>' :
+                                                            '<svg class="w-4 h-4 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+                                                        }
+                                                        <span class="font-bold text-lg flex-shrink-0 ${item.stockRestant > 0 ? 'text-orange-600' : 'text-green-600'}">
+                                                            ${item.stockRestant}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                            <div class="pt-2 border-t mt-3">
+                                                <div class="flex justify-between items-center">
+                                                    <span class="font-bold text-gray-700">Total Stock ${categorie}:</span>
+                                                    <span class="font-bold text-xl ${totalStockRestant > 0 ? 'text-orange-600' : 'text-green-600'}">
+                                                        ${totalStockRestant}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>`
+                                    }
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    
+                    <div class="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <div class="flex items-start gap-3">
+                            <svg class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                            <div>
+                                <p class="font-semibold text-blue-900 mb-1">Légende</p>
+                                <div class="text-sm text-blue-800 space-y-1">
+                                    <p><span class="font-semibold">Stock Restant</span> = Quantité Achetée - Quantité Vendue - Quantité Remise au Local</p>
+                                    <p class="flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                                        <span>Stock restant à gérer</span>
+                                    </p>
+                                    <p class="flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                        <span>Stock écoulé</span>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Items Table -->
+                <div class="bg-white rounded-lg shadow-lg overflow-hidden mb-6">
+                    <div class="p-6 bg-indigo-600 text-white flex justify-between items-center flex-wrap gap-4">
+                        <h2 class="text-xl font-bold">Articles - ${currentEvent.name}</h2>
+                        <button onclick="exportToCSV()" class="flex items-center gap-2 bg-white text-indigo-600 px-4 py-2 rounded-lg hover:bg-indigo-50 transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            </svg>
+                            Exporter CSV
+                        </button>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Article</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Format</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Catégorie</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Fournisseur</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Qté Achetée</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Prix Achat</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Total Achat</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Qté Vendue</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Prix Vente</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Total Vente</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Marge</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Stock Restant</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${currentEvent.items.map(item => {
+                                    const stats = calculateItemStats(item);
+                                    return `
+                                        <tr class="border-b hover:bg-gray-50">
+                                            <td class="px-4 py-3">
+                                                <input type="text" value="${item.article}" 
+                                                    onchange="updateItem(${item.id}, 'article', this.value)"
+                                                    class="w-full border rounded px-2 py-1">
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <input type="text" value="${item.format}" 
+                                                    onchange="updateItem(${item.id}, 'format', this.value)"
+                                                    class="w-20 border rounded px-2 py-1">
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <select onchange="updateItem(${item.id}, 'categorie', this.value)"
+                                                    class="w-full border rounded px-2 py-1">
+                                                    ${categories.map(cat => `
+                                                        <option value="${cat}" ${item.categorie === cat ? 'selected' : ''}>${cat}</option>
+                                                    `).join('')}
+                                                </select>
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <input type="text" value="${item.fournisseur}" 
+                                                    onchange="updateItem(${item.id}, 'fournisseur', this.value)"
+                                                    class="w-24 border rounded px-2 py-1">
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <input type="number" value="${item.qteAchetee}" 
+                                                    onchange="updateItem(${item.id}, 'qteAchetee', this.value)"
+                                                    class="w-20 border rounded px-2 py-1">
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <input type="number" step="0.01" value="${item.prixAchat}" 
+                                                    onchange="updateItem(${item.id}, 'prixAchat', this.value)"
+                                                    class="w-20 border rounded px-2 py-1">
+                                            </td>
+                                            <td class="px-4 py-3 font-semibold text-red-600">
+                                                ${stats.totalAchat.toFixed(2)}€
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <input type="number" value="${item.qteConsomme}" 
+                                                    onchange="updateItem(${item.id}, 'qteConsomme', this.value)"
+                                                    class="w-20 border rounded px-2 py-1">
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <input type="number" step="0.01" value="${item.prixVente}" 
+                                                    onchange="updateItem(${item.id}, 'prixVente', this.value)"
+                                                    class="w-20 border rounded px-2 py-1">
+                                            </td>
+                                            <td class="px-4 py-3 font-semibold text-green-600">
+                                                ${stats.totalVente.toFixed(2)}€
+                                            </td>
+                                            <td class="px-4 py-3 font-bold ${stats.marge >= 0 ? 'text-green-600' : 'text-red-600'}">
+                                                ${stats.marge.toFixed(2)}€
+                                            </td>
+                                            <td class="px-4 py-3 font-semibold ${stats.stockRestant > 0 ? 'text-orange-600' : 'text-gray-600'}">
+                                                ${stats.stockRestant}
+                                            </td>
+                                            <td class="px-4 py-3">
+                                                <button onclick="deleteItem(${item.id})" class="text-red-600 hover:text-red-800">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                                    </svg>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Add New Item Form -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3
